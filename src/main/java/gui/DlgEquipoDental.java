@@ -1,24 +1,29 @@
 package gui;
 
 import java.awt.EventQueue;
+import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.List;
 
+import javax.persistence.EntityManager;
+import javax.persistence.TypedQuery;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
 import javax.swing.JTextArea;
-import java.awt.Font;
+import javax.swing.JTextField;
+
+import java.time.LocalDate;
+import model.DentistaAJ;
+import model.EquipoDentalAJ;
+import util.JPAUtil;
 
 public class DlgEquipoDental extends JDialog implements ActionListener {
 
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = 1L;
 	private JLabel lblNroEquipo;
 	private JLabel lblNombreEquipo;
@@ -42,7 +47,7 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 	private JScrollPane scrollPane;
 	private JTextArea txtSalida;
 
-	// Tipo de operación a procesar: Adicionar, Consultar, Modificar o Eliminar
+	// Tipo de operaciÃ³n a procesar: Adicionar, Consultar, Modificar o Eliminar
 	private int tipoOperacion;
 
 	// Constantes para los tipos de operaciones
@@ -104,11 +109,11 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 		txtNombre.setBounds(174, 35, 251, 23);
 		getContentPane().add(txtNombre);
 		txtNombre.setColumns(10);
-		
+
 		lblCosto = new JLabel("Costo :");
 		lblCosto.setBounds(10, 62, 149, 23);
 		getContentPane().add(lblCosto);
-		
+
 		txtCosto = new JTextField();
 		txtCosto.setEditable(false);
 		txtCosto.setColumns(10);
@@ -119,10 +124,11 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 		cboEstados = new JComboBox<String>();
 		cboEstados.setBounds(174, 88, 86, 23);
 		getContentPane().add(cboEstados);
+
 		for (String estado : estados) {
 			cboEstados.addItem(estado);
 		}
-		
+
 		lblFechaAdquisicion = new JLabel("Fecha de adquisici\u00F3n:");
 		lblFechaAdquisicion.setBounds(10, 116, 162, 20);
 		getContentPane().add(lblFechaAdquisicion);
@@ -132,7 +138,7 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 		txtFechaAdquisicion.setBounds(174, 114, 146, 26);
 		getContentPane().add(txtFechaAdquisicion);
 		txtFechaAdquisicion.setColumns(10);
-		
+
 		cboDentistas = new JComboBox<Object>();
 		cboDentistas.setBounds(174, 143, 251, 26);
 		getContentPane().add(cboDentistas);
@@ -258,30 +264,153 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 	}
 
 	void cargarDentistas() {
+		EntityManager em = JPAUtil.getEntityManager();
 
+		TypedQuery<DentistaAJ> query = em.createQuery(
+				"SELECT d FROM DentistaAJ d", DentistaAJ.class);
+
+		List<DentistaAJ> lista = query.getResultList();
+
+		cboDentistas.removeAllItems();
+
+		for (DentistaAJ d : lista) {
+			cboDentistas.addItem(d);
+		}
+
+		em.close();
 	}
 
 	void listar() {
+		EntityManager em = JPAUtil.getEntityManager();
 
+		TypedQuery<EquipoDentalAJ> query = em.createQuery(
+				"SELECT e FROM EquipoDentalAJ e", EquipoDentalAJ.class);
+
+		List<EquipoDentalAJ> lista = query.getResultList();
+
+		txtSalida.setText("");
+
+		for (EquipoDentalAJ e : lista) {
+			imprimir(
+					e.getNroEquipo() + "\t" +
+					e.getNombre() + "\t" +
+					e.getCosto() + "\t" +
+					e.getEstado() + "\t" +
+					e.getFechaAdquisicion() + "\t" +
+					e.getDentista().getNombreCompleto()
+			);
+		}
+
+		em.close();
 	}
 
 	void adicionar() {
+		EntityManager em = JPAUtil.getEntityManager();
 
+		try {
+			EquipoDentalAJ equipo = new EquipoDentalAJ();
+
+			equipo.setNombre(txtNombre.getText());
+			equipo.setCosto(Double.parseDouble(txtCosto.getText()));
+			equipo.setEstado(cboEstados.getSelectedItem().toString());
+			equipo.setFechaAdquisicion(LocalDate.now());
+			equipo.setDentista((DentistaAJ) cboDentistas.getSelectedItem());
+
+			em.getTransaction().begin();
+			em.persist(equipo);
+			em.getTransaction().commit();
+
+			mensajeInfo("Equipo Dental registrado");
+			limpiar();
+
+		} catch (Exception e) {
+			if (em.getTransaction().isActive()) {
+				em.getTransaction().rollback();
+			}
+
+			mensajeError("Error al registrar Equipo Dental");
+			e.printStackTrace();
+
+		} finally {
+			em.close();
+		}
 	}
-	
-	void buscar() {
 
+	void buscar() {
+		EntityManager em = JPAUtil.getEntityManager();
+
+		try {
+			int nroEquipo = Integer.parseInt(txtNroEquipo.getText());
+
+			EquipoDentalAJ equipo = em.find(EquipoDentalAJ.class, nroEquipo);
+
+			if (equipo == null) {
+				mensajeAdvertencia("Equipo Dental no encontrado");
+			} else {
+				txtNombre.setText(equipo.getNombre());
+				txtCosto.setText(String.valueOf(equipo.getCosto()));
+				cboEstados.setSelectedItem(equipo.getEstado());
+				txtFechaAdquisicion.setText(String.valueOf(equipo.getFechaAdquisicion()));
+
+				for (int i = 0; i < cboDentistas.getItemCount(); i++) {
+					DentistaAJ dentista = (DentistaAJ) cboDentistas.getItemAt(i);
+
+					if (dentista.getIdDentista() == equipo.getDentista().getIdDentista()) {
+						cboDentistas.setSelectedIndex(i);
+						break;
+					}
+				}
+
+				habilitarOk();
+			}
+
+		} catch (Exception e) {
+			mensajeError("Error al buscar Equipo Dental");
+			e.printStackTrace();
+
+		} finally {
+			em.close();
+		}
 	}
 
 	void modificar() {
+		EntityManager em = JPAUtil.getEntityManager();
 
+		try {
+			int nroEquipo = Integer.parseInt(txtNroEquipo.getText());
+
+			EquipoDentalAJ equipo = em.find(EquipoDentalAJ.class, nroEquipo);
+
+			equipo.setNombre(txtNombre.getText());
+			equipo.setCosto(Double.parseDouble(txtCosto.getText()));
+			equipo.setEstado(cboEstados.getSelectedItem().toString());
+			equipo.setFechaAdquisicion(LocalDate.parse(txtFechaAdquisicion.getText()));
+			equipo.setDentista((DentistaAJ) cboDentistas.getSelectedItem());
+
+			em.getTransaction().begin();
+			em.merge(equipo);
+			em.getTransaction().commit();
+
+			mensajeInfo("Equipo Dental actualizado");
+			limpiar();
+
+		} catch (Exception e) {
+			if (em.getTransaction().isActive()) {
+				em.getTransaction().rollback();
+			}
+
+			mensajeError("Error al actualizar Equipo Dental");
+			e.printStackTrace();
+
+		} finally {
+			em.close();
+		}
 	}
 
 	void eliminar() {
 
 	}
 
-	// Métodos tipo void (con parámetros)
 	void habilitarEntradas(boolean sino) {
 		txtNombre.setEditable(sino);
 		txtCosto.setEditable(sino);
@@ -296,6 +425,7 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 			btnBuscar.setEnabled(!sino);
 			btnOK.setEnabled(false);
 		}
+
 		btnAdicionar.setEnabled(sino);
 		btnModificar.setEnabled(sino);
 		btnEliminar.setEnabled(sino);
@@ -311,6 +441,7 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 			btnOK.setEnabled(true);
 			txtNombre.requestFocus();
 		}
+
 		if (tipoOperacion == ELIMINAR) {
 			txtNroEquipo.setEditable(false);
 			btnBuscar.setEnabled(false);
@@ -321,7 +452,7 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 	void mensajeInfo(String msj) {
 		mensaje(msj, "INFO", JOptionPane.INFORMATION_MESSAGE);
 	}
-	
+
 	void mensajeAdvertencia(String msj) {
 		mensaje(msj, "ADVERTENCIA", JOptionPane.WARNING_MESSAGE);
 	}
@@ -348,8 +479,10 @@ public class DlgEquipoDental extends JDialog implements ActionListener {
 		txtCosto.setText("");
 		cboEstados.setSelectedIndex(0);
 		txtFechaAdquisicion.setText("");
+
 		if (cboDentistas.getItemCount() > 0)
 			cboDentistas.setSelectedIndex(0);
+
 		txtNroEquipo.setEditable(false);
 		txtFechaAdquisicion.setEditable(false);
 		habilitarEntradas(false);
